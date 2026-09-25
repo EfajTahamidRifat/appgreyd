@@ -12,18 +12,30 @@ p1:'Pambansang talent search sa TV5, Hunyo hanggang Setyembre 2026.',p2:'Online 
 ch:'Aming mga kliyente',ich:'Mga koneksyon sa industriya',new:'Bago',role:'Founder at CEO',c1:'Nagsimula sa ABS-CBN (2012 hanggang 2015) bilang coordinator at researcher ng It\u2019s Showtime.',c2:'Sumunod ang Viva Entertainment, mga event sa World Trade Center Philippines, at digital marketing para sa mga online brand.',c3:'Pinamunuan ang partnerships at media deals sa UTOL at RSM Entertainment.',c4:'Ngayon, pinapatakbo niya ang Apgreyd para palaguin ang mga brand gamit ang matatalinong ideya at matibay na pakikipagtulungan.',
 awk:'Parangal · 2025',awh:'Most Outstanding Businessman of the Year',awd:'Kinilala bilang isa sa mga pinagkakatiwalaang digital marketing services sa Pilipinas.',awm:'Nobyembre 23, 2025 · Lancaster Hotel Mandaluyong',
 th:'Ang team',m0:'General Manager',m3:'Head ng Human Resources',ft:'May brand ka bang palalaguin? Mag-usap tayo.'};
-const tEls=$$('[data-t]');tEls.forEach(e=>e.dataset.en=e.innerHTML);
+const tEls=$$('[data-t]');tEls.forEach(e=>e.dataset.en=e.dataset.shown=e.innerHTML);
+const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+let ready=false;
 function setLang(l,animate=true){
-  const go=()=>{tEls.forEach(e=>e.innerHTML=(l==='fil'&&FIL[e.dataset.t])||e.dataset.en);document.documentElement.lang=l==='fil'?'fil':'en';buildCrawl(l)};
-  $$('.lang button').forEach(b=>b.classList.toggle('on',b.dataset.l===l));localStorage.setItem('apg-lang',l);
-  animate&&!reduce?gsap.timeline().to(tEls,{autoAlpha:0,y:-8,duration:.18,stagger:{amount:.15}}).add(go).to(tEls,{autoAlpha:1,y:0,duration:.3,stagger:{amount:.2}}):go();
+  const next=e=>(l==='fil'&&FIL[e.dataset.t])||e.dataset.en;
+  const changed=tEls.filter(e=>e.dataset.shown!==next(e));
+  const go=()=>{changed.forEach(e=>{e.innerHTML=e.dataset.shown=next(e);if(ready&&e.matches('h2'))splitH(e)});document.documentElement.lang=l==='fil'?'fil':'en';buildCrawl(l)};
+  $$('.lang button').forEach(b=>b.classList.toggle('on',b.dataset.l===l));store.set('apg-lang',l);
+  // fade only what is on screen and currently visible; leave scroll-driven captions and pending reveals alone
+  const fade=changed.filter(e=>{if(e.closest('.stage-copy'))return false;const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&+getComputedStyle(e).opacity>.5});
+  animate&&!reduce&&fade.length?gsap.timeline().to(fade,{opacity:0,y:-8,duration:.18,stagger:{amount:.15}}).add(go).to(fade,{opacity:1,y:0,duration:.3,stagger:{amount:.2}}):go();
 }
+/* heading word reveal; re-runnable after a language switch */
+function splitH(h){h.innerHTML=h.textContent.split(' ').map(w=>`<span class="wm"><i>${w}</i></span>`).join(' ');if(!h.dataset.rev)gsap.set(h.querySelectorAll('i'),{yPercent:115})}
 $$('.lang button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
 
 /* ---------- Smooth scroll ---------- */
 const lenis=new Lenis({duration:1.15,easing:t=>Math.min(1,1.001-Math.pow(2,-10*t))});
 let vel=0;lenis.on('scroll',e=>{ScrollTrigger.update();vel=e.velocity});gsap.ticker.add(t=>lenis.raf(t*1000));gsap.ticker.lagSmoothing(0);
-$$('a[href^="#"]').forEach(a=>a.onclick=e=>{e.preventDefault();lenis.scrollTo(a.getAttribute('href'),{offset:0})});
+const navEl=$('#nav'),menuBtn=$('#menuBtn');
+function menu(open){navEl.classList.toggle('open',open);menuBtn.setAttribute('aria-expanded',open);open?lenis.stop():lenis.start()}
+menuBtn.onclick=()=>menu(!navEl.classList.contains('open'));
+addEventListener('keydown',e=>{if(e.key==='Escape'&&navEl.classList.contains('open')){menu(false);menuBtn.focus()}});
+$$('a[href^="#"]').forEach(a=>a.onclick=e=>{e.preventDefault();if(navEl.classList.contains('open'))menu(false);lenis.scrollTo(a.getAttribute('href'),{offset:0})});
 
 /* ---------- Frame sequence (scroll-scrubbed video) ---------- */
 const cv=$('#cv'),ctx=cv.getContext('2d'),imgs=new Array(FRAMES),pad=n=>String(n+1).padStart(3,'0');
@@ -39,8 +51,8 @@ function draw(i){let k=i;while(k>0&&!(imgs[k]&&imgs[k].naturalWidth))k--;const i
   await Promise.all([...head.map(i=>load(i).then(bump)),document.fonts.ready.then(bump)]);
   draw(0);
   $$('.ln>span').forEach(s=>{s.innerHTML=[...s.textContent].map(c=>`<em style="display:inline-block;font-style:normal">${c===' '?'&nbsp;':c}</em>`).join('')});
-  const saved=localStorage.getItem('apg-lang');if(saved==='fil')setLang('fil',false);
-  gsap.timeline({onComplete:init})
+  const saved=store.get('apg-lang');if(saved==='fil')setLang('fil',false);
+  gsap.timeline({onComplete:()=>{$$('.ln>span').forEach(s=>s.textContent=s.textContent.replace(/\u00a0/g,' '));gsap.set('.ln',{overflow:'visible'});init()}})
     .to('#pre',{yPercent:-100,duration:.9,ease:'power4.inOut',delay:.3})
     .from('.ln em',{yPercent:120,rotate:8,duration:.9,ease:'power4.out',stagger:.03},'-=.35')
     .from('.onair,.hero-p,.hero-cta,.nav',{autoAlpha:0,y:20,duration:.7,stagger:.08},'-=.7')
@@ -78,9 +90,13 @@ function init(){
 
   /* services: image follows the cursor */
   const peek=$('#peek'),pi=peek.querySelector('img'),px=gsap.quickTo(peek,'x',{duration:.5,ease:'power3'}),py=gsap.quickTo(peek,'y',{duration:.5,ease:'power3'});
+  gsap.set(peek,{scale:.6});let peekOn=false,mx=0,my=0;
+  addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY},{passive:true});
+  const hidePeek=()=>{peekOn=false;gsap.to(peek,{opacity:0,scale:.6,duration:.25,overwrite:'auto'})};
+  lenis.on('scroll',()=>{if(!peekOn)return;const el=document.elementFromPoint(mx,my);if(!el||!el.closest('#rows li'))hidePeek()});
   $$('#rows li').forEach(li=>{
-    li.onmouseenter=()=>{pi.src=li.dataset.img;gsap.to(peek,{opacity:1,scale:1,rotate:-3,duration:.35,ease:'back.out(2)'})};
-    li.onmouseleave=()=>gsap.to(peek,{opacity:0,scale:.6,duration:.25});
+    li.onmouseenter=e=>{pi.src=li.dataset.img;if(!peekOn)gsap.set(peek,{x:e.clientX+30,y:e.clientY-100});px(e.clientX+30);py(e.clientY-100);peekOn=true;gsap.to(peek,{opacity:1,scale:1,rotate:-3,duration:.35,ease:'back.out(2)',overwrite:'auto'})};
+    li.onmouseleave=hidePeek;
     li.onmousemove=e=>{px(e.clientX+30);py(e.clientY-100)};
   });
   gsap.from('#rows li',{y:60,opacity:0,stagger:.08,duration:.8,ease:'power3.out',scrollTrigger:{trigger:'#rows',start:'top 80%'}});
@@ -120,11 +136,13 @@ function init(){
   /* ceo, team, contact */
   gsap.from('.ceo-i',{clipPath:'inset(0 100% 0 0)',duration:1.2,ease:'power4.out',scrollTrigger:{trigger:'.ceo',start:'top 70%'}});
   gsap.from('.ceo-t>*',{y:40,opacity:0,stagger:.1,duration:.8,scrollTrigger:{trigger:'.ceo-t',start:'top 75%'}});
-  gsap.from('.tg>div',{y:80,opacity:0,stagger:.12,duration:.9,ease:'power3.out',scrollTrigger:{trigger:'.tg',start:'top 85%'}});
+  gsap.from('.tg>div',{y:80,opacity:0,stagger:.12,duration:.9,ease:'power3.out',clearProps:'transform',scrollTrigger:{trigger:'.tg',start:'top 85%'}});
   gsap.from('.contact h2,.big',{yPercent:60,opacity:0,stagger:.1,duration:.9,ease:'power3.out',scrollTrigger:{trigger:'.contact',start:'top 70%'}});
 
   /* nav hides on scroll down */
-  ScrollTrigger.create({start:0,end:'max',onUpdate:s=>gsap.to('#nav',{yPercent:s.direction>0&&s.scroll()>300?-100:0,duration:.35,overwrite:true})});
+  const nav=$('#nav');
+  ScrollTrigger.create({start:0,end:'max',onUpdate:s=>{nav.classList.toggle('solid',s.scroll()>80);
+    gsap.to(nav,{yPercent:s.direction>0&&s.scroll()>300&&!nav.classList.contains('open')?-100:0,duration:.35,overwrite:true})}});
 
   /* cursor */
   if(!touch){const cx=gsap.quickTo('#cur','x',{duration:.15}),cy=gsap.quickTo('#cur','y',{duration:.15});
@@ -134,13 +152,14 @@ function init(){
   /* extra motion */
   gsap.to('#prog',{scaleX:1,ease:'none',scrollTrigger:{start:0,end:'max',scrub:.3}});
   gsap.to('.hero-h',{'--wd':64,ease:'none',scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:true}});
-  $$('h2[data-t]').forEach(h=>{h.innerHTML=h.textContent.split(' ').map(w=>`<span class="wm"><i>${w}</i></span>`).join(' ');
-    gsap.from(h.querySelectorAll('i'),{yPercent:115,duration:.9,ease:'power4.out',stagger:.07,scrollTrigger:{trigger:h,start:'top 88%'}})});
+  $$('h2[data-t]').forEach(h=>{splitH(h);
+    ScrollTrigger.create({trigger:h,start:'top 88%',once:true,onEnter:()=>{h.dataset.rev=1;gsap.to(h.querySelectorAll('i'),{yPercent:0,duration:.9,ease:'power4.out',stagger:.07})}})});
+  ready=true;
   const band=$('#band');band.innerHTML='<span>Basta Marketing,</span><span>Kami Na!</span>'.repeat(4);
   const bt=gsap.to(band,{xPercent:-50,duration:30,ease:'none',repeat:-1}),bsk=gsap.quickSetter(band,'skewX','deg');let sk=0;
   const spin=gsap.to('.badge',{rotation:360,duration:14,ease:'none',repeat:-1});
   gsap.ticker.add(()=>{sk+=(gsap.utils.clamp(-14,14,-vel*.8)-sk)*.12;bsk(sk);bt.timeScale(1+Math.abs(vel)*.25);spin.timeScale(1+Math.abs(vel)*.3)});
-  gsap.from('#tech li',{x:-70,opacity:0,stagger:.09,duration:.8,ease:'power3.out',scrollTrigger:{trigger:'#tech',start:'top 80%'}});
+  gsap.from('#tech li',{x:-70,opacity:0,stagger:.09,duration:.8,ease:'power3.out',clearProps:'transform',scrollTrigger:{trigger:'#tech',start:'top 80%'}});
   if(!touch){
     $$('.btn,.big').forEach(b=>{const qx=gsap.quickTo(b,'x',{duration:.4,ease:'power3'}),qy=gsap.quickTo(b,'y',{duration:.4,ease:'power3'});
       b.addEventListener('mousemove',e=>{const r=b.getBoundingClientRect();qx((e.clientX-r.left-r.width/2)*.25);qy((e.clientY-r.top-r.height/2)*.35)});
