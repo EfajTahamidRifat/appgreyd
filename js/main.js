@@ -90,15 +90,18 @@ function init(){
 
   /* services: image follows the cursor */
   const peek=$('#peek'),pi=peek.querySelector('img'),px=gsap.quickTo(peek,'x',{duration:.5,ease:'power3'}),py=gsap.quickTo(peek,'y',{duration:.5,ease:'power3'});
-  gsap.set(peek,{scale:.6});let peekOn=false,mx=0,my=0;
-  addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY},{passive:true});
-  const hidePeek=()=>{peekOn=false;gsap.to(peek,{opacity:0,scale:.6,duration:.25,overwrite:'auto'})};
-  lenis.on('scroll',()=>{if(!peekOn)return;const el=document.elementFromPoint(mx,my);if(!el||!el.closest('#rows li'))hidePeek()});
-  $$('#rows li').forEach(li=>{
-    li.onmouseenter=e=>{pi.src=li.dataset.img;if(!peekOn)gsap.set(peek,{x:e.clientX+30,y:e.clientY-100});px(e.clientX+30);py(e.clientY-100);peekOn=true;gsap.to(peek,{opacity:1,scale:1,rotate:-3,duration:.35,ease:'back.out(2)',overwrite:'auto'})};
-    li.onmouseleave=hidePeek;
-    li.onmousemove=e=>{px(e.clientX+30);py(e.clientY-100)};
-  });
+  /* one source of truth: whatever row is actually under the pointer right now.
+     hover events alone get missed (fast flicks, wheel scrolling, leaving the window), which left the image stuck. */
+  gsap.set(peek,{scale:.6,opacity:0});let peekLi=null,mx=-1,my=-1;
+  const showPeek=li=>{if(li===peekLi)return;
+    if(!peekLi)gsap.set(peek,{x:mx+30,y:my-100});
+    peekLi=li;pi.src=li.dataset.img;gsap.to(peek,{opacity:1,scale:1,rotate:-3,duration:.35,ease:'back.out(2)',overwrite:true})};
+  const hidePeek=()=>{if(!peekLi)return;peekLi=null;gsap.to(peek,{opacity:0,scale:.6,duration:.2,overwrite:true})};
+  const syncPeek=el=>{const li=el&&el.closest?el.closest('#rows li'):null;li?showPeek(li):hidePeek()};
+  addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;syncPeek(e.target);if(peekLi){px(mx+30);py(my-100)}},{passive:true});
+  lenis.on('scroll',()=>{if(peekLi||mx>=0)syncPeek(mx<0?null:document.elementFromPoint(mx,my))});
+  document.documentElement.addEventListener('mouseleave',()=>{mx=my=-1;hidePeek()});
+  addEventListener('blur',hidePeek);document.addEventListener('visibilitychange',hidePeek);
   gsap.from('#rows li',{y:60,opacity:0,stagger:.08,duration:.8,ease:'power3.out',scrollTrigger:{trigger:'#rows',start:'top 80%'}});
 
   /* build: neon terminal that reacts to the list */
